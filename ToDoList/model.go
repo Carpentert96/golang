@@ -1,7 +1,7 @@
 // model.go
 package main
 
-// Todo represents a single to-do entry.
+// Todo represents a single to-do entry in a json format.
 type Todo struct {
 	ID          int    `json:"id"`
 	Description string `json:"description"`

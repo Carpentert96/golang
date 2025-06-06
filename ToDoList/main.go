@@ -19,14 +19,14 @@ func main() {
 	undoneIDPtr := flag.Int("undone", 0, "Unmark a completed to-do:  -undone=<id>")
 	flag.Parse()
 
-	// 2) Load existing todos from todos.json
+	// 2) Load existing todos from todos.json (internal storage evidence)
 	todos, err := loadTodos()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading todos: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 3) If -clear is set, wipe the entire list and exit
+	// 3) If -clear is set, wipe the entire list and exit (added because it was annoying to have to delete each task one by one)
 	if *clearAllPtr {
 		if len(todos) == 0 {
 			fmt.Println("You have no tasks to delete.")
@@ -95,7 +95,7 @@ func main() {
 
 	// 6) Otherwise, dispatch to exactly one other flag-based action
 	switch {
-	// —— ADD ——
+	// 7) If -add is set, add a new task with the given description
 	case *addPtr != "":
 		newID := 1
 		for _, t := range todos {
@@ -112,7 +112,7 @@ func main() {
 		}
 		fmt.Printf("Added to-do #%d: %s\n", newID, newTodo.Description)
 
-	// —— LIST ——
+	// 8) If -list is set, print the entire list of tasks
 	case *listPtr:
 		if len(todos) == 0 {
 			fmt.Println("You have no to-do items.")
@@ -127,7 +127,7 @@ func main() {
 			fmt.Printf("%d: %s %s\n", t.ID, status, t.Description)
 		}
 
-	// —— UPDATE ——
+	// 9) If -update is set, modify the description of an existing task
 	case *updateIDPtr != 0:
 		if *descPtr == "" {
 			fmt.Fprintln(os.Stderr, "Error: must supply -desc when using -update")
@@ -151,7 +151,7 @@ func main() {
 		}
 		fmt.Printf("Updated to-do #%d.\n", *updateIDPtr)
 
-	// —— DELETE ONE ——
+	// 10) If -delete is set, remove the specified task
 	case *deleteIDPtr != 0:
 		idx := -1
 		for i, t := range todos {
@@ -171,7 +171,7 @@ func main() {
 		}
 		fmt.Printf("Deleted to-do #%d.\n", *deleteIDPtr)
 
-	// —— NO VALID FLAGS ——
+	// 11) If no flags are set, print usage information
 	default:
 		fmt.Println("Usage:")
 		flag.PrintDefaults()

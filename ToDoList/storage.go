@@ -4,26 +4,30 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 )
 
 const dataFile = "todos.json"
 
 // loadTodos reads todos.json (if it exists) and returns a slice of Todo.
-// If the file doesn’t exist, it returns an empty slice (no error).
+// If the file doesn’t exist, it returns an empty slice.
 func loadTodos() ([]Todo, error) {
 	var todos []Todo
+
 	if _, err := os.Stat(dataFile); os.IsNotExist(err) {
 		return []Todo{}, nil
 	}
-	bytes, err := ioutil.ReadFile(dataFile)
+
+	// Use os.ReadFile instead of ioutil.ReadFile (deprecated in Go 1.16)
+	bytes, err := os.ReadFile(dataFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read data file: %w", err)
 	}
+
 	if err := json.Unmarshal(bytes, &todos); err != nil {
 		return nil, fmt.Errorf("failed to parse data file: %w", err)
 	}
+
 	return todos, nil
 }
 
@@ -33,7 +37,9 @@ func saveTodos(todos []Todo) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode todos: %w", err)
 	}
-	if err := ioutil.WriteFile(dataFile, bytes, 0644); err != nil {
+
+	// Use os.WriteFile instead of ioutil.WriteFile (deprecated in Go 1.16)
+	if err := os.WriteFile(dataFile, bytes, 0644); err != nil {
 		return fmt.Errorf("failed to write data file: %w", err)
 	}
 	return nil
