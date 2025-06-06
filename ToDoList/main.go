@@ -20,6 +20,7 @@ func main() {
 	flag.Parse()
 
 	// 2) Load existing todos from todos.json (internal storage evidence)
+	//First error handling practice
 	todos, err := loadTodos()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading todos: %v\n", err)
@@ -27,6 +28,7 @@ func main() {
 	}
 
 	// 3) If -clear is set, wipe the entire list and exit (added because it was annoying to have to delete each task one by one)
+	//Practicing a little error handling here
 	if *clearAllPtr {
 		if len(todos) == 0 {
 			fmt.Println("You have no tasks to delete.")
@@ -42,6 +44,7 @@ func main() {
 	}
 
 	// 4) If -done is set, mark that task Done=true and exit
+	//Also playing around with a little error handling here
 	if *doneIDPtr != 0 {
 		found := false
 		for i, t := range todos {
@@ -96,6 +99,7 @@ func main() {
 	// 6) Otherwise, dispatch to exactly one other flag-based action
 	switch {
 	// 7) If -add is set, add a new task with the given description
+	// As mentioned on the morning call I went for incrementing IDs, scanning todo list for highest ID then + 1
 	case *addPtr != "":
 		newID := 1
 		for _, t := range todos {
@@ -152,6 +156,8 @@ func main() {
 		fmt.Printf("Updated to-do #%d.\n", *updateIDPtr)
 
 	// 10) If -delete is set, remove the specified task
+	//Just a thought, if there are 3 tasks and I delete task 2, the IDs of the remaining tasks will not change.
+	//That will probably break the incrementing ID logic, but I think it's fine for this simple app.
 	case *deleteIDPtr != 0:
 		idx := -1
 		for i, t := range todos {

@@ -18,7 +18,7 @@ func loadTodos() ([]Todo, error) {
 		return []Todo{}, nil
 	}
 
-	// Use os.ReadFile instead of ioutil.ReadFile (deprecated in Go 1.16)
+	//I notcied a lot of older research online referenced ioutil.ReadFile which was deprecated in Go 1.16. It auto defaults to os.ReadFile now but I changed it anyway
 	bytes, err := os.ReadFile(dataFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read data file: %w", err)
