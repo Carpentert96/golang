@@ -1,8 +1,5 @@
 1) Basic CLI application 
-- Create a command line application that uses flags to accept a to-do item 
-adds it to an empty list of to-do items and prints the list to console 
-- After printing the list of to-do items, save them to a file on disk 
-- When the application starts, load all to-do items from disk before adding new 
-item 
-- Allow the user to update the description of a to-do item or delete it
-- Added a few extra feature too
+Using CLI flag, my program can add, update, list, delete, mark as done, or undone and clear the entire list (hindsight I should have added a started function between done and not done)
+Formatted in a json style
+Reads and writes to disc allowing tasks to be saved and loaded at the user leasuire
+I've also added some descriptive comments where needed to describe my design choices, understanding and apperication of missed functionality
