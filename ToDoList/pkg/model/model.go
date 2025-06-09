@@ -1,5 +1,5 @@
 // model.go
-package main
+package model
 
 // Todo represents a single to-do entry in a json format.
 type Todo struct {

@@ -1,5 +1,5 @@
 // storage.go
-package main
+package storage
 
 import (
 	"encoding/json"
