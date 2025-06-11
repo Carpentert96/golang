@@ -12,6 +12,7 @@ const dataFile = "todos.json"
 
 // LoadTodos reads todos.json (if it exists) and returns a slice of model.Todo.
 // If the file doesn’t exist, it returns an empty slice.
+// Function now change to caps so it can be used outside the package via git import
 func LoadTodos() ([]model.Todo, error) {
 	var todos []model.Todo
 
