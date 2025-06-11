@@ -5,8 +5,9 @@ import (
 	"context"
 	"os"
 
+	"log/slog"
+
 	"github.com/google/uuid"
-	"golang.org/x/exp/slog"
 )
 
 type ctxKey string
