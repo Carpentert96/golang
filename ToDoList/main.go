@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Carpentert96/ToDoList/pkg/commands"
 	"github.com/Carpentert96/ToDoList/pkg/storage"
@@ -155,4 +157,13 @@ func main() {
 		fmt.Println("Usage:")
 		flag.PrintDefaults()
 	}
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	logger.InfoContext(ctx, "waiting for interrupt (Ctrl+C) to exit",
+		slog.String("trace", tid),
+	)
+	<-sigCh
+	logger.InfoContext(ctx, "interrupt received; shutting down",
+		slog.String("trace", tid),
+	)
 }

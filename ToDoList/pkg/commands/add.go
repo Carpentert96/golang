@@ -2,9 +2,14 @@ package commands
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/Carpentert96/ToDoList/pkg/model"
 )
+
+// added for testing purposes
+var Output io.Writer = os.Stdout
 
 // AddTodo creates a new task if desc is non-empty and persists via saveTodos.
 // Returns an error if saving fails.
@@ -29,6 +34,6 @@ func AddTodo(addTask string, todos []model.Todo, saveTodos func([]model.Todo) er
 		return fmt.Errorf("failed to save todos: %w", err)
 	}
 
-	fmt.Printf("Added to-do #%d: %s\n", newID, newTodo.Description)
+	fmt.Fprintf(Output, "Added to-do #%d: %s\n", newID, newTodo.Description)
 	return nil
 }
