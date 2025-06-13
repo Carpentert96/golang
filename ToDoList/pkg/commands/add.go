@@ -8,17 +8,16 @@ import (
 	"github.com/Carpentert96/ToDoList/pkg/model"
 )
 
-// added for testing purposes
+// added for testing purposes (mocking overide)
 var Output io.Writer = os.Stdout
 
-// AddTodo creates a new task if desc is non-empty and persists via saveTodos.
-// Returns an error if saving fails.
+// AddTodo creates a new task and returns an error if saving fails.
 func AddTodo(addTask string, todos []model.Todo, saveTodos func([]model.Todo) error) error {
 	if addTask == "" {
 		return nil
 	}
 
-	// generate next available ID
+	// Incriment +1
 	newID := 1
 	for _, t := range todos {
 		if t.ID >= newID {
@@ -29,7 +28,7 @@ func AddTodo(addTask string, todos []model.Todo, saveTodos func([]model.Todo) er
 	newTodo := model.Todo{ID: newID, Description: addTask, Done: false}
 	todos = append(todos, newTodo)
 
-	// persist tasks using injected saveTodos
+	// Saving to disc
 	if err := saveTodos(todos); err != nil {
 		return fmt.Errorf("failed to save todos: %w", err)
 	}

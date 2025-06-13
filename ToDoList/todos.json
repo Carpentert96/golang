@@ -2,6 +2,18 @@
   {
     "ID": 1,
     "Description": "Show and Tell",
+    "Started": true,
+    "Done": true
+  },
+  {
+    "ID": 2,
+    "Description": "Pass course",
+    "Started": true,
+    "Done": false
+  },
+  {
+    "ID": 3,
+    "Description": "If fail, offer bribe",
     "Started": false,
     "Done": false
   }

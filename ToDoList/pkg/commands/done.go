@@ -31,7 +31,7 @@ func MarkDone(doneIDPtr int, todos []model.Todo, saveTodos func([]model.Todo) er
 		return fmt.Errorf("no to-do with ID %d", doneIDPtr)
 	}
 
-	// persist changes
+	//Save changes
 	if err := saveTodos(todos); err != nil {
 		return fmt.Errorf("failed to save todos: %w", err)
 	}

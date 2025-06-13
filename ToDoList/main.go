@@ -8,13 +8,18 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Carpentert96/ToDoList/server"
+
 	"github.com/Carpentert96/ToDoList/pkg/commands"
 	"github.com/Carpentert96/ToDoList/pkg/storage"
 )
 
 func main() {
+
+	server.Run()
+
 	//Implementation of the init.go function (containing logging and context setup)
-	ctx, logger, tid := initApp()
+	ctx, logger, tid := server.InitApp()
 
 	addPtr := flag.String("add", "", "Add a new to-do")
 	listPtr := flag.Bool("list", false, "List all to-dos")
@@ -48,9 +53,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// dispatch based on flags
+	// Logging dispatched as required for each command for example, each string with a minimum of a trace ID
 	switch {
-	case addPtr != nil && addTask != "":
+	case addPtr != nil && addTask != "": // nil check implemented as requested
 		logger.InfoContext(ctx, "adding todo",
 			slog.String("trace", tid),
 			slog.String("task", addTask),
@@ -157,6 +162,7 @@ func main() {
 		fmt.Println("Usage:")
 		flag.PrintDefaults()
 	}
+	//Simple signal handling to gracefully exit on Ctrl+C or SIGTERM using Kill <ID> (currently not implemented as it's always waiting for Ctrl+C but might)
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 	logger.InfoContext(ctx, "waiting for interrupt (Ctrl+C) to exit",
