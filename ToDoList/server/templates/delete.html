@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head><title>Delete To-Do</title></head>
+<body>
+  <h1>Delete To-Do #{{.ID}}</h1>
+  <p>Are you sure you want to delete “{{.Description}}”?</p>
+  <form method="POST" action="/delete">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <button type="submit">Yes, delete</button>
+    <a href="/list">Cancel</a>
+  </form>
+</body>
+</html>

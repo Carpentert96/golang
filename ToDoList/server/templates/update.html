@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><title>Update To-Do</title></head>
+<body>
+  <h1>Edit To-Do #{{.ID}}</h1>
+  <form method="POST" action="/update">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <label>Description: <input type="text" name="description" value="{{.Description}}" required></label><br>
+    <label>Started:     <input type="checkbox" name="started" {{if .Started}}checked{{end}}></label><br>
+    <label>Done:        <input type="checkbox" name="done" {{if .Done}}checked{{end}}></label><br>
+    <button type="submit">Save Changes</button>
+  </form>
+  <a href="/list">Back to list</a>
+</body>
+</html>

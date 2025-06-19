@@ -11,6 +11,10 @@
             <strong>#{{.ID}}:</strong> {{.Description}}<br>
             {{if .Started}}🟡 Started{{else}}⚪ Not Started{{end}},
             {{if .Done}}✅ Done{{else}}❌ Not Done{{end}}
+            &nbsp;|&nbsp;
+            <a href="/update?id={{.ID}}">Edit</a>
+            &nbsp;|&nbsp;
+            <a href="/delete?id={{.ID}}">Delete</a>
         </li>
         {{else}}
         <li>No tasks found.</li>

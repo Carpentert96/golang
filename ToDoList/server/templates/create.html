@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>Create To-Do</title></head>
+<body>
+  <h1>New To-Do</h1>
+  <form method="POST" action="/create">
+    <label>Description: <input type="text" name="description" required></label><br>
+    <label>Started:     <input type="checkbox" name="started"></label><br>
+    <label>Done:        <input type="checkbox" name="done"></label><br>
+    <button type="submit">Create</button>
+  </form>
+  <a href="/list">Back to list</a>
+</body>
+</html>

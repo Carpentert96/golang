@@ -1,7 +1,7 @@
 [
   {
     "ID": 1,
-    "Description": "Show and Tell",
+    "Description": "Show and Tell test",
     "Started": true,
     "Done": true
   },
@@ -13,7 +13,7 @@
   },
   {
     "ID": 3,
-    "Description": "If fail, offer bribe",
+    "Description": "R8",
     "Started": false,
     "Done": false
   }

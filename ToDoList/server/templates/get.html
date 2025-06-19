@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head><title>Lookup To-Do</title></head>
+<body>
+  <h1>Lookup To-Do</h1>
+  {{if .}}
+    <p>
+      #{{.ID}}: {{.Description}}<br>
+      Started: {{.Started}}<br>
+      Done: {{.Done}}
+    </p>
+    <a href="/list">Back to list</a>
+  {{else}}
+    <form method="GET" action="/get">
+      <label>ID: <input type="number" name="id" required></label>
+      <button type="submit">Lookup</button>
+    </form>
+    <a href="/list">Back to list</a>
+  {{end}}
+</body>
+</html>

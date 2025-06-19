@@ -4,43 +4,138 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Carpentert96/ToDoList/pkg/model"
 )
 
-const dataFile = "todos.json"
-
-// LoadTodos reads todos.json (if it exists) and returns a slice of model.Todo.
-// If the file doesn’t exist, it returns an empty slice.
-// Function now change to caps so it can be used outside the package via git import
-func LoadTodos() ([]model.Todo, error) {
-	var todos []model.Todo
-
-	if _, err := os.Stat(dataFile); os.IsNotExist(err) {
-		return []model.Todo{}, nil
+// --- actor commands & results ---
+type (
+	readCmd  struct{ resp chan []model.Todo }
+	writeCmd struct {
+		todos []model.Todo
+		resp  chan error
 	}
-
-	bytes, err := os.ReadFile(dataFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read data file: %w", err)
+	addCmd struct {
+		desc          string
+		started, done bool
+		resp          chan addResult
 	}
+)
+type addResult struct {
+	todo model.Todo
+	err  error
+}
+type resetCmd struct{ resp chan struct{} }
 
-	if err := json.Unmarshal(bytes, &todos); err != nil {
-		return nil, fmt.Errorf("failed to parse data file: %w", err)
-	}
+var actorCh = make(chan interface{})
 
-	return todos, nil
+func init() {
+	go func() {
+		var (
+			todos       []model.Todo
+			initialized bool
+		)
+		for cmd := range actorCh {
+			// first command: load from disk in the current cwd
+			if !initialized {
+				todos = loadFromDisk()
+				initialized = true
+			}
+			switch c := cmd.(type) {
+			case readCmd:
+				// return a copy
+				cp := make([]model.Todo, len(todos))
+				copy(cp, todos)
+				c.resp <- cp
+
+			case writeCmd:
+				todos = c.todos
+				c.resp <- saveToDisk(todos)
+
+			case addCmd:
+				// compute new ID
+				var maxID int
+				for _, t := range todos {
+					if t.ID > maxID {
+						maxID = t.ID
+					}
+				}
+				newTodo := model.Todo{
+					ID:          maxID + 1,
+					Description: c.desc,
+					Started:     c.started,
+					Done:        c.done,
+				}
+				todos = append(todos, newTodo)
+				err := saveToDisk(todos)
+				c.resp <- addResult{todo: newTodo, err: err}
+
+				//had to add this to avoid additional writes to disk (the test was bringing back 21 todos instead of 20)
+			case resetCmd:
+				todos = nil
+				initialized = false
+				c.resp <- struct{}{}
+			}
+		}
+	}()
 }
 
-// SaveTodos writes the entire slice of model.Todo back to todos.json.
-func SaveTodos(todos []model.Todo) error {
-	bytes, err := json.MarshalIndent(todos, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to encode todos: %w", err)
-	}
+// Calls reset inside of actor loop to avoid additional writes to disk (We're also about to call it in my test)
+func Reset() {
+	resp := make(chan struct{})
+	actorCh <- resetCmd{resp: resp}
+	<-resp
+}
 
-	if err := os.WriteFile(dataFile, bytes, 0644); err != nil {
-		return fmt.Errorf("failed to write data file: %w", err)
+// LoadTodos asks the actor for the full slice.
+func LoadTodos() ([]model.Todo, error) {
+	resp := make(chan []model.Todo)
+	actorCh <- readCmd{resp: resp}
+	return <-resp, nil
+}
+
+// SaveTodos asks the actor to overwrite the slice.
+func SaveTodos(todos []model.Todo) error {
+	resp := make(chan error)
+	actorCh <- writeCmd{todos: todos, resp: resp}
+	return <-resp
+}
+
+// AddTodo asks the actor to append one new Todo and persist.
+func AddTodo(desc string, started, done bool) (model.Todo, error) {
+	resp := make(chan addResult)
+	actorCh <- addCmd{desc: desc, started: started, done: done, resp: resp}
+	res := <-resp
+	return res.todo, res.err
+}
+
+// --- private disk I/O ---
+
+const dataFile = "todos.json"
+
+func loadFromDisk() []model.Todo {
+	if _, err := os.Stat(dataFile); os.IsNotExist(err) {
+		return nil
 	}
-	return nil
+	b, err := os.ReadFile(dataFile)
+	if err != nil {
+		panic(fmt.Errorf("storage actor read error: %w", err))
+	}
+	var todos []model.Todo
+	if err := json.Unmarshal(b, &todos); err != nil {
+		panic(fmt.Errorf("storage actor unmarshal error: %w", err))
+	}
+	return todos
+}
+
+func saveToDisk(todos []model.Todo) error {
+	b, err := json.MarshalIndent(todos, "", "  ")
+	if err != nil {
+		return fmt.Errorf("storage actor marshal error: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(dataFile), 0755); err != nil {
+		return fmt.Errorf("storage actor mkdir error: %w", err)
+	}
+	return os.WriteFile(dataFile, b, 0644)
 }
