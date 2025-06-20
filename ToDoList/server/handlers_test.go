@@ -2,6 +2,7 @@
 package server_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Carpentert96/ToDoList/pkg/model"
 	"github.com/Carpentert96/ToDoList/pkg/storage"
 	"github.com/Carpentert96/ToDoList/server"
 )
@@ -244,7 +246,7 @@ func TestDeleteHandler(t *testing.T) {
 }
 
 func TestConcurrentCreates(t *testing.T) { //add some logging to this
-	// clean working dir
+
 	tmp := t.TempDir()
 	origWd, _ := os.Getwd()
 	defer os.Chdir(origWd)
@@ -257,7 +259,7 @@ func TestConcurrentCreates(t *testing.T) { //add some logging to this
 	const N = 100
 	errCh := make(chan error, N)
 
-	// fire off N goroutines that all POST to /create
+	// Evidence of goroutines running concurrently
 	for i := 0; i < N; i++ {
 		go func(i int) {
 			form := url.Values{
@@ -276,7 +278,7 @@ func TestConcurrentCreates(t *testing.T) { //add some logging to this
 		}(i)
 	}
 
-	// wait for all
+	// wait for all goroutines to finish (log this)
 	for i := 0; i < N; i++ {
 		if err := <-errCh; err != nil {
 			t.Error(err)
@@ -288,7 +290,197 @@ func TestConcurrentCreates(t *testing.T) { //add some logging to this
 	if err != nil {
 		t.Fatalf("LoadTodos: %v", err)
 	}
-	if len(todos) != N { //expects 20!
+	if len(todos) != N { //expects 100!
 		t.Fatalf("expected %d todos, got %d", N, len(todos))
+	}
+}
+
+func TestConcurrentGetHandler(t *testing.T) {
+	t.Parallel()
+
+	// Setup
+	tmp := t.TempDir()
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	// Seed 10 todos
+	const N = 10
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i := 1; i <= N; i++ {
+		sb.WriteString(fmt.Sprintf(`{"ID":%d,"Description":"task-%02d","Started":false,"Done":false}`, i, i))
+		if i < N {
+			sb.WriteString(",")
+		}
+	}
+	sb.WriteString("]")
+	seedJSON(t, sb.String())
+
+	// Fire off 50 concurrent GETs
+	const M = 50
+	errCh := make(chan error, M)
+	for i := 0; i < M; i++ {
+		go func(i int) {
+			id := (i % N) + 1
+			req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/get?id=%d", id), nil)
+			w := httptest.NewRecorder()
+			server.GetHandler(w, req)
+			if w.Result().StatusCode != http.StatusOK {
+				errCh <- fmt.Errorf("GET id=%d status=%d", id, w.Result().StatusCode)
+				return
+			}
+			body, _ := io.ReadAll(w.Body)
+			want := fmt.Sprintf("task-%02d", id)
+			if !strings.Contains(string(body), want) {
+				errCh <- fmt.Errorf("GET id=%d missing %q in %q", id, want, body)
+				return
+			}
+			errCh <- nil
+		}(i)
+	}
+
+	// Collect errors
+	for i := 0; i < M; i++ {
+		if err := <-errCh; err != nil {
+			t.Error(err)
+		}
+	}
+}
+
+// --- Concurrent UPDATEs ---
+func TestConcurrentUpdateHandler(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	storage.Reset()
+
+	// Seed 10 todos
+	const N = 10
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i := 1; i <= N; i++ {
+		sb.WriteString(fmt.Sprintf(`{"ID":%d,"Description":"Orig-%02d","Started":false,"Done":false}`, i, i))
+		if i < N {
+			sb.WriteString(",")
+		}
+	}
+	sb.WriteString("]")
+	seedJSON(t, sb.String())
+
+	// Fire off N concurrent updates (each updates a distinct ID)
+	errCh := make(chan error, N)
+	for id := 1; id <= N; id++ {
+		go func(id int) {
+			form := url.Values{}
+			form.Set("id", fmt.Sprint(id))
+			form.Set("description", fmt.Sprintf("Upd-%02d", id))
+			form.Set("started", "on")
+			form.Set("done", "on")
+			req := httptest.NewRequest(http.MethodPost, "/update", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			server.UpdateHandler(w, req)
+			if w.Result().StatusCode != http.StatusSeeOther {
+				errCh <- fmt.Errorf("UPDATE id=%d status=%d", id, w.Result().StatusCode)
+				return
+			}
+			errCh <- nil
+		}(id)
+	}
+
+	// Collect errors
+	for i := 0; i < N; i++ {
+		if err := <-errCh; err != nil {
+			t.Error(err)
+		}
+	}
+
+	// Verify all updates applied
+	final, err := os.ReadFile("todos.json")
+	if err != nil {
+		t.Fatalf("read todos.json: %v", err)
+	}
+	var todos []model.Todo
+	if err := json.Unmarshal(final, &todos); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(todos) != N {
+		t.Fatalf("expected %d todos, got %d", N, len(todos))
+	}
+	for _, td := range todos {
+		want := fmt.Sprintf("Upd-%02d", td.ID)
+		if td.Description != want || !td.Started || !td.Done {
+			t.Errorf("todo %#v not updated correctly", td)
+		}
+	}
+}
+
+func TestConcurrentDeleteHandler(t *testing.T) {
+	t.Parallel()
+
+	tmp := t.TempDir()
+	orig, _ := os.Getwd()
+	defer os.Chdir(orig)
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	storage.Reset()
+
+	// Seed 10 todos
+	const N = 10
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i := 1; i <= N; i++ {
+		sb.WriteString(fmt.Sprintf(`{"ID":%d,"Description":"T-%02d","Started":false,"Done":false}`, i, i))
+		if i < N {
+			sb.WriteString(",")
+		}
+	}
+	sb.WriteString("]")
+	seedJSON(t, sb.String())
+
+	// Fire off N concurrent deletes
+	errCh := make(chan error, N)
+	for id := 1; id <= N; id++ {
+		go func(id int) {
+			form := url.Values{"id": {fmt.Sprint(id)}}
+			req := httptest.NewRequest(http.MethodPost, "/delete", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			server.DeleteHandler(w, req)
+			if w.Result().StatusCode != http.StatusSeeOther {
+				errCh <- fmt.Errorf("DELETE id=%d status=%d", id, w.Result().StatusCode)
+				return
+			}
+			errCh <- nil
+		}(id)
+	}
+
+	// Collect errors
+	for i := 0; i < N; i++ {
+		if err := <-errCh; err != nil {
+			t.Error(err)
+		}
+	}
+
+	// Verify all gone
+	final, err := os.ReadFile("todos.json")
+	if err != nil {
+		t.Fatalf("read todos.json: %v", err)
+	}
+	var todos []model.Todo
+	if err := json.Unmarshal(final, &todos); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(todos) != 0 {
+		t.Errorf("expected 0 todos after deletes, got %d: %v", len(todos), todos)
 	}
 }
