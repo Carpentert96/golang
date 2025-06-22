@@ -8,23 +8,19 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Carpentert96/ToDoList/server"
-
-	"github.com/Carpentert96/ToDoList/pkg/commands"
+	"github.com/Carpentert96/ToDoList/pkg/model"
 	"github.com/Carpentert96/ToDoList/pkg/storage"
 )
 
 func main() {
+	// Initialize a store instance with actor-based concurrency
+	store := storage.NewStore("todos.json")
 
-	server.Run()
-
-	//Implementation of the init.go function (containing logging and context setup)
-	ctx, logger, tid := server.InitApp()
-
+	// Set up flags
 	addPtr := flag.String("add", "", "Add a new to-do")
 	listPtr := flag.Bool("list", false, "List all to-dos")
 	updateIDPtr := flag.Int("update", 0, "ID to update")
-	descPtr := flag.String("desc", "", "New description")
+	descPtr := flag.String("desc", "", "New description for update")
 	deleteIDPtr := flag.Int("delete", 0, "ID to delete")
 	clearPtr := flag.Bool("clear", false, "Delete all to-dos")
 	doneIDPtr := flag.Int("done", 0, "Mark done by ID")
@@ -32,144 +28,99 @@ func main() {
 	startedIDPtr := flag.Int("started", 0, "Mark started by ID")
 	flag.Parse()
 
-	// As per feedback, I have added one single dereference in which I can call
-	addTask := *addPtr
-	listFlag := *listPtr
-	updateID := *updateIDPtr
-	updateDesc := *descPtr
-	deleteID := *deleteIDPtr
-	clearAll := *clearPtr
-	doneID := *doneIDPtr
-	undoneID := *undoneIDPtr
-	startedID := *startedIDPtr
+	// Prepare logger
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
 
-	// load existing todos from storage and added my first iteration of logging
-	todos, err := storage.LoadTodos()
+	// Load current todos from store
+	todos, err := store.LoadTodos()
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to load todos",
-			slog.String("trace", tid),
-			slog.Any("err", err),
-		)
+		logger.Error("failed to load todos", "err", err)
 		os.Exit(1)
 	}
 
-	// Logging dispatched as required for each command for example, each string with a minimum of a trace ID
 	switch {
-	case addPtr != nil && addTask != "": // nil check implemented as requested
-		logger.InfoContext(ctx, "adding todo",
-			slog.String("trace", tid),
-			slog.String("task", addTask),
-		)
-		if err := commands.AddTodo(addTask, todos, storage.SaveTodos); err != nil {
-			logger.ErrorContext(ctx, "add failed",
-				slog.String("trace", tid),
-				slog.Any("err", err),
-			)
+	case *addPtr != "":
+		// Compute next ID
+		nextID := 1
+		for _, t := range todos {
+			if t.ID >= nextID {
+				nextID = t.ID + 1
+			}
+		}
+		newTodo := model.Todo{ID: nextID, Description: *addPtr}
+		if err := store.AddTodo(newTodo); err != nil {
+			logger.Error("add failed", "err", err)
 			os.Exit(1)
+		}
+		fmt.Printf("Added todo #%d: %s\n", newTodo.ID, newTodo.Description)
+
+	case *listPtr:
+		for _, t := range todos {
+			status := ""
+			if t.Started {
+				status += "[Started] "
+			}
+			if t.Done {
+				status += "[Done] "
+			}
+			fmt.Printf("#%d: %s %s\n", t.ID, t.Description, status)
 		}
 
-	case listPtr != nil && listFlag:
-		logger.InfoContext(ctx, "listing todos",
-			slog.String("trace", tid),
-		)
-		if err := commands.List(todos); err != nil {
-			logger.ErrorContext(ctx, "list failed",
-				slog.String("trace", tid),
-				slog.Any("err", err),
-			)
+	case *updateIDPtr != 0:
+		id := *updateIDPtr
+		if err := store.UpdateTodo(id, *descPtr, true, false); err != nil {
+			logger.Error("update failed", "id", id, "err", err)
 			os.Exit(1)
 		}
+		fmt.Printf("Updated todo #%d to %s\n", id, *descPtr)
 
-	case updateIDPtr != nil && updateID != 0:
-		logger.InfoContext(ctx, "updating todo",
-			slog.String("trace", tid),
-			slog.Int("id", updateID),
-			slog.String("desc", updateDesc),
-		)
-		if err := commands.Update(updateID, updateDesc, todos, storage.SaveTodos); err != nil {
-			logger.ErrorContext(ctx, "update failed",
-				slog.String("trace", tid),
-				slog.Any("err", err),
-			)
+	case *deleteIDPtr != 0:
+		id := *deleteIDPtr
+		if err := store.DeleteTodo(id); err != nil {
+			logger.Error("delete failed", "id", id, "err", err)
 			os.Exit(1)
 		}
+		fmt.Printf("Deleted todo #%d\n", id)
 
-	case deleteIDPtr != nil && deleteID != 0:
-		logger.InfoContext(ctx, "deleting todo",
-			slog.String("trace", tid),
-			slog.Int("id", deleteID),
-		)
-		if err := commands.Delete(todos, deleteID, storage.SaveTodos); err != nil {
-			logger.ErrorContext(ctx, "delete failed",
-				slog.String("trace", tid),
-				slog.Any("err", err),
-			)
-			os.Exit(1)
+	case *clearPtr:
+		for _, t := range todos {
+			if err := store.DeleteTodo(t.ID); err != nil {
+				logger.Error("clear failed deleting", "id", t.ID, "err", err)
+				os.Exit(1)
+			}
 		}
+		fmt.Println("Cleared all todos")
 
-	case clearPtr != nil && clearAll:
-		logger.InfoContext(ctx, "clearing all todos",
-			slog.String("trace", tid),
-		)
-		if err := commands.Clear(clearAll, todos, storage.SaveTodos); err != nil {
-			logger.ErrorContext(ctx, "clear failed",
-				slog.String("trace", tid),
-				slog.Any("err", err),
-			)
+	case *doneIDPtr != 0:
+		id := *doneIDPtr
+		if err := store.UpdateTodo(id, "", true, true); err != nil {
+			logger.Error("mark done failed", "id", id, "err", err)
 			os.Exit(1)
 		}
+		fmt.Printf("Marked todo #%d done\n", id)
 
-	case doneIDPtr != nil && doneID != 0:
-		logger.InfoContext(ctx, "marking todo done",
-			slog.String("trace", tid),
-			slog.Int("id", doneID),
-		)
-		if err := commands.MarkDone(doneID, todos, storage.SaveTodos); err != nil {
-			logger.ErrorContext(ctx, "mark done failed",
-				slog.String("trace", tid),
-				slog.Any("err", err),
-			)
+	case *undoneIDPtr != 0:
+		id := *undoneIDPtr
+		if err := store.UpdateTodo(id, "", false, false); err != nil {
+			logger.Error("mark undone failed", "id", id, "err", err)
 			os.Exit(1)
 		}
+		fmt.Printf("Marked todo #%d undone\n", id)
 
-	case undoneIDPtr != nil && undoneID != 0:
-		logger.InfoContext(ctx, "marking todo undone",
-			slog.String("trace", tid),
-			slog.Int("id", undoneID),
-		)
-		if err := commands.MarkUndone(undoneID, todos, storage.SaveTodos); err != nil {
-			logger.ErrorContext(ctx, "mark undone failed",
-				slog.String("trace", tid),
-				slog.Any("err", err),
-			)
+	case *startedIDPtr != 0:
+		id := *startedIDPtr
+		if err := store.UpdateTodo(id, "", true, false); err != nil {
+			logger.Error("mark started failed", "id", id, "err", err)
 			os.Exit(1)
 		}
-
-	case startedIDPtr != nil && startedID != 0:
-		logger.InfoContext(ctx, "marking todo started",
-			slog.String("trace", tid),
-			slog.Int("id", startedID),
-		)
-		if err := commands.MarkStarted(startedID, todos, storage.SaveTodos); err != nil {
-			logger.ErrorContext(ctx, "mark started failed",
-				slog.String("trace", tid),
-				slog.Any("err", err),
-			)
-			os.Exit(1)
-		}
+		fmt.Printf("Marked todo #%d started\n", id)
 
 	default:
-		fmt.Println("Usage:")
-		flag.PrintDefaults()
+		flag.Usage()
 	}
-	//Simple signal handling to gracefully exit on Ctrl+C or SIGTERM using Kill <ID> (currently not implemented as it's always waiting for Ctrl+C but might)
+
+	// Wait for interrupt signal to exit
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	logger.InfoContext(ctx, "waiting for interrupt (Ctrl+C) to exit",
-		slog.String("trace", tid),
-	)
 	<-sigCh
-	logger.InfoContext(ctx, "interrupt received; shutting down",
-		slog.String("trace", tid),
-	)
 }

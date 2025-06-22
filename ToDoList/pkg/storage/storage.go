@@ -1,141 +1,175 @@
+// pkg/storage/storage.go
 package storage
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
+	"sync"
 
 	"github.com/Carpentert96/ToDoList/pkg/model"
 )
 
-// --- actor commands & results ---
-type (
-	readCmd  struct{ resp chan []model.Todo }
-	writeCmd struct {
-		todos []model.Todo
-		resp  chan error
-	}
-	addCmd struct {
-		desc          string
-		started, done bool
-		resp          chan addResult
-	}
-)
-type addResult struct {
-	todo model.Todo
-	err  error
+// Default is the global store instance used by handlers.
+//var Default *Store
+
+// Store represents a single actor handling todos.json writes.
+type Store struct {
+	filePath string
+	cmds     chan interface{}
 }
-type resetCmd struct{ resp chan struct{} }
 
-var actorCh = make(chan interface{})
+// Command types for actor
 
-func init() {
-	go func() {
-		var (
-			todos       []model.Todo
-			initialized bool
-		)
-		for cmd := range actorCh {
-			// first command: load from disk in the current cwd
-			if !initialized {
-				todos = loadFromDisk()
-				initialized = true
-			}
-			switch c := cmd.(type) {
-			case readCmd:
-				// return a copy
-				cp := make([]model.Todo, len(todos))
-				copy(cp, todos)
-				c.resp <- cp
+type addCmd struct {
+	Description string
+	Started     bool
+	Done        bool
+	resp        chan error
+}
 
-			case writeCmd:
-				todos = c.todos
-				c.resp <- saveToDisk(todos)
+type updateCmd struct {
+	ID          int
+	Description string
+	Started     bool
+	Done        bool
+	resp        chan error
+}
 
-			case addCmd:
-				// compute new ID
-				var maxID int
-				for _, t := range todos {
-					if t.ID > maxID {
-						maxID = t.ID
-					}
+type deleteCmd struct {
+	ID   int
+	resp chan error
+}
+
+// NewStore creates and initializes a Store at filePath.
+// It starts a background goroutine to serialize write commands.
+func NewStore(filePath string) *Store {
+	s := &Store{
+		filePath: filePath,
+		cmds:     make(chan interface{}, 100), // enough room for bursts
+	}
+
+	// Ensure the file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		os.WriteFile(filePath, []byte("[]"), 0644)
+	}
+
+	// Launch actor
+	go s.actorLoop()
+
+	//	Default = s
+	return s
+}
+
+// actorLoop runs commands sequentially to prevent races.
+func (s *Store) actorLoop() {
+	var mu sync.Mutex // protect in-memory slice
+	var todos []model.Todo
+
+	// load initial state
+	if b, err := os.ReadFile(s.filePath); err == nil {
+		json.Unmarshal(b, &todos)
+	}
+
+	for cmd := range s.cmds {
+		switch c := cmd.(type) {
+		case addCmd:
+			mu.Lock()
+			// Assign unique ID
+			maxID := 0
+			for _, t := range todos {
+				if t.ID > maxID {
+					maxID = t.ID
 				}
-				newTodo := model.Todo{
-					ID:          maxID + 1,
-					Description: c.desc,
-					Started:     c.started,
-					Done:        c.done,
-				}
-				todos = append(todos, newTodo)
-				err := saveToDisk(todos)
-				c.resp <- addResult{todo: newTodo, err: err}
-
-				//had to add this to avoid additional writes to disk (the test was bringing back 21 todos instead of 20)
-			case resetCmd:
-				todos = nil
-				initialized = false
-				c.resp <- struct{}{}
 			}
+			newTodo := model.Todo{
+				ID:          maxID + 1,
+				Description: c.Description,
+				Started:     c.Started,
+				Done:        c.Done,
+			}
+			todos = append(todos, newTodo)
+			err := s.save(todos)
+			mu.Unlock()
+			c.resp <- err
+
+		case updateCmd:
+			mu.Lock()
+			for i, t := range todos {
+				if t.ID == c.ID {
+					todos[i].Description = c.Description
+					todos[i].Started = c.Started
+					todos[i].Done = c.Done
+					break
+				}
+			}
+			err := s.save(todos)
+			mu.Unlock()
+			c.resp <- err
+
+		case deleteCmd:
+			mu.Lock()
+			var keep []model.Todo
+			for _, t := range todos {
+				if t.ID != c.ID {
+					keep = append(keep, t)
+				}
+			}
+			todos = keep
+			err := s.save(todos)
+			mu.Unlock()
+			c.resp <- err
 		}
-	}()
-}
-
-// Calls reset inside of actor loop to avoid additional writes to disk (We're also about to call it in my test)
-func Reset() {
-	resp := make(chan struct{})
-	actorCh <- resetCmd{resp: resp}
-	<-resp
-}
-
-// LoadTodos asks the actor for the full slice.
-func LoadTodos() ([]model.Todo, error) {
-	resp := make(chan []model.Todo)
-	actorCh <- readCmd{resp: resp}
-	return <-resp, nil
-}
-
-// SaveTodos asks the actor to overwrite the slice.
-func SaveTodos(todos []model.Todo) error {
-	resp := make(chan error)
-	actorCh <- writeCmd{todos: todos, resp: resp}
-	return <-resp
-}
-
-// AddTodo asks the actor to append one new Todo and persist.
-func AddTodo(desc string, started, done bool) (model.Todo, error) {
-	resp := make(chan addResult)
-	actorCh <- addCmd{desc: desc, started: started, done: done, resp: resp}
-	res := <-resp
-	return res.todo, res.err
-}
-
-// --- private disk I/O ---
-
-const dataFile = "todos.json"
-
-func loadFromDisk() []model.Todo {
-	if _, err := os.Stat(dataFile); os.IsNotExist(err) {
-		return nil
 	}
-	b, err := os.ReadFile(dataFile)
+}
+
+// save writes the current todos slice to disk.
+func (s *Store) save(todos []model.Todo) error {
+	b, err := json.MarshalIndent(todos, "", "  ")
 	if err != nil {
-		panic(fmt.Errorf("storage actor read error: %w", err))
+		return fmt.Errorf("encode todos: %w", err)
+	}
+	if err := os.WriteFile(s.filePath, b, 0644); err != nil {
+		return fmt.Errorf("write file: %w", err)
+	}
+	return nil
+}
+
+// LoadTodos reads directly from disk, bypassing actor; used for GETs and tests.
+func (s *Store) LoadTodos() ([]model.Todo, error) {
+	b, err := os.ReadFile(s.filePath)
+	if err != nil {
+		return nil, fmt.Errorf("read todos: %w", err)
 	}
 	var todos []model.Todo
 	if err := json.Unmarshal(b, &todos); err != nil {
-		panic(fmt.Errorf("storage actor unmarshal error: %w", err))
+		return nil, fmt.Errorf("parse todos: %w", err)
 	}
-	return todos
+	return todos, nil
 }
 
-func saveToDisk(todos []model.Todo) error {
-	b, err := json.MarshalIndent(todos, "", "  ")
-	if err != nil {
-		return fmt.Errorf("storage actor marshal error: %w", err)
+// AddTodo enqueues a new todo with internal ID generation.
+func (s *Store) AddTodo(todo model.Todo) error {
+	ch := make(chan error)
+	s.cmds <- addCmd{
+		Description: todo.Description,
+		Started:     todo.Started,
+		Done:        todo.Done,
+		resp:        ch,
 	}
-	if err := os.MkdirAll(filepath.Dir(dataFile), 0755); err != nil {
-		return fmt.Errorf("storage actor mkdir error: %w", err)
-	}
-	return os.WriteFile(dataFile, b, 0644)
+	return <-ch
+}
+
+// UpdateTodo enqueues an update for the given todo ID.
+func (s *Store) UpdateTodo(id int, description string, started, done bool) error {
+	ch := make(chan error)
+	s.cmds <- updateCmd{ID: id, Description: description, Started: started, Done: done, resp: ch}
+	return <-ch
+}
+
+// DeleteTodo enqueues a deletion of the given todo ID.
+func (s *Store) DeleteTodo(id int) error {
+	ch := make(chan error)
+	s.cmds <- deleteCmd{ID: id, resp: ch}
+	return <-ch
 }
