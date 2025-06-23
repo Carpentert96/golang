@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/Carpentert96/ToDoList/pkg/model"
 	"github.com/Carpentert96/ToDoList/pkg/storage"
 )
@@ -22,7 +24,9 @@ func TestStoreBasic(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "todos.json")
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, filePath)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, filePath)
+
 	// 2) Initially, LoadTodos should return an empty slice
 	todos, err := store.LoadTodos()
 	if err != nil {
@@ -84,7 +88,8 @@ func TestStoreConcurrency(t *testing.T) {
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "todos.json") //having written these tests last, I forgot I used "dataFile" instead of "filePath" and was perplexed as to why it was in error. Kept it in anyway
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, filePath)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, filePath)
 
 	const N = 50
 	var wg sync.WaitGroup

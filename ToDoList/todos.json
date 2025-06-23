@@ -6,21 +6,9 @@
     "Done": true
   },
   {
-    "ID": 2,
-    "Description": "Pass course",
-    "Started": true,
-    "Done": false
-  },
-  {
     "ID": 3,
     "Description": "buy second Audiii",
     "Started": true,
-    "Done": false
-  },
-  {
-    "ID": 4,
-    "Description": "buy Audi R888",
-    "Started": false,
     "Done": false
   },
   {

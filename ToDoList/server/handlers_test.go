@@ -18,6 +18,7 @@ import (
 	"github.com/Carpentert96/ToDoList/pkg/model"
 	"github.com/Carpentert96/ToDoList/pkg/storage"
 	"github.com/Carpentert96/ToDoList/server"
+	"github.com/google/uuid"
 )
 
 // seedJSON writes jsonData into filePath and logs it.
@@ -36,7 +37,8 @@ func TestCreateAndListHandlers(t *testing.T) {
 	tmp := t.TempDir()
 	dataFile := filepath.Join(tmp, "todos.json")
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})) //using os.Stout to display all writes and saves for evidence
-	store := storage.NewStore(context.Background(), logger, dataFile)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, dataFile)
 
 	// GET /list on empty store
 	t.Logf("→ GET /list on empty store")
@@ -100,7 +102,8 @@ func TestGetHandler(t *testing.T) {
   {"ID":2,"Description":"Second","Started":true,"Done":false}
 ]`)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, dataFile)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, dataFile)
 
 	// GET form
 	req := httptest.NewRequest(http.MethodGet, "/get", nil)
@@ -134,7 +137,8 @@ func TestUpdateHandler(t *testing.T) {
 	dataFile := filepath.Join(tmp, "todos.json")
 	seedJSON(t, dataFile, `[{"ID":1,"Description":"Old","Started":false,"Done":false}]`)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, dataFile)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, dataFile)
 
 	// GET pre-filled
 	req := httptest.NewRequest(http.MethodGet, "/update?id=1", nil)
@@ -179,7 +183,8 @@ func TestDeleteHandler(t *testing.T) {
   {"ID":2,"Description":"Delete","Started":false,"Done":false}
 ]`)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, dataFile)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, dataFile)
 
 	// GET confirm
 	req := httptest.NewRequest(http.MethodGet, "/delete?id=2", nil)
@@ -216,7 +221,8 @@ func TestConcurrentCreates(t *testing.T) {
 	tmp := t.TempDir()
 	dataFile := filepath.Join(tmp, "todos.json")
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, dataFile)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, dataFile)
 
 	const N = 100
 	errCh := make(chan error, N)
@@ -263,7 +269,8 @@ func TestConcurrentGetHandler(t *testing.T) {
 	sb.WriteString("]")
 	seedJSON(t, dataFile, sb.String())
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, dataFile)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, dataFile)
 
 	const M = 50
 	errCh := make(chan error, M)
@@ -312,7 +319,8 @@ func TestConcurrentUpdateHandler(t *testing.T) {
 	sb2.WriteString("]")
 	seedJSON(t, dataFile, sb2.String())
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, dataFile)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, dataFile)
 
 	errCh := make(chan error, N)
 	for id := 1; id <= N; id++ {
@@ -372,7 +380,8 @@ func TestConcurrentDeleteHandler(t *testing.T) {
 	sb3.WriteString("]")
 	seedJSON(t, dataFile, sb3.String())
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{}))
-	store := storage.NewStore(context.Background(), logger, dataFile)
+	tid := uuid.New().String()
+	store := storage.NewStore(context.Background(), logger, tid, dataFile)
 
 	errCh := make(chan error, Ndel)
 	for id := 1; id <= Ndel; id++ {
