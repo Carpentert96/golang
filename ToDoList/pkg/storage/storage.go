@@ -1,26 +1,27 @@
-// pkg/storage/storage.go
 package storage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 
 	"github.com/Carpentert96/ToDoList/pkg/model"
 )
 
-// Default is the global store instance used by handlers.
-//var Default *Store
-
 // Store represents a single actor handling todos.json writes.
 type Store struct {
 	filePath string
 	cmds     chan interface{}
+
+	ctx    context.Context
+	logger *slog.Logger
+	tid    string
 }
 
-// Command types for actor
-
+// Commands sent over the actor channel:
 type addCmd struct {
 	Description string
 	Started     bool
@@ -42,40 +43,44 @@ type deleteCmd struct {
 }
 
 // NewStore creates and initializes a Store at filePath.
-// It starts a background goroutine to serialize write commands.
-func NewStore(filePath string) *Store {
+// You must pass in the traceID you got from InitApp.
+// It starts a background goroutine to serialize all writes.
+func NewStore(
+	ctx context.Context,
+	logger *slog.Logger,
+	traceID string,
+	filePath string,
+) *Store {
 	s := &Store{
 		filePath: filePath,
-		cmds:     make(chan interface{}, 100), // enough room for bursts
+		cmds:     make(chan interface{}, 100),
+		ctx:      ctx,
+		logger:   logger,
+		tid:      traceID,
 	}
-
-	// Ensure the file exists
+	// ensure file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		os.WriteFile(filePath, []byte("[]"), 0644)
 	}
-
-	// Launch actor
 	go s.actorLoop()
-
-	//	Default = s
 	return s
 }
 
-// actorLoop runs commands sequentially to prevent races.
 func (s *Store) actorLoop() {
-	var mu sync.Mutex // protect in-memory slice
+	var mu sync.Mutex
 	var todos []model.Todo
 
-	// load initial state
+	// load initial
 	if b, err := os.ReadFile(s.filePath); err == nil {
 		json.Unmarshal(b, &todos)
 	}
 
 	for cmd := range s.cmds {
 		switch c := cmd.(type) {
+
 		case addCmd:
 			mu.Lock()
-			// Assign unique ID
+			// assign next ID
 			maxID := 0
 			for _, t := range todos {
 				if t.ID > maxID {
@@ -91,13 +96,23 @@ func (s *Store) actorLoop() {
 			todos = append(todos, newTodo)
 			err := s.save(todos)
 			mu.Unlock()
+
+			if err == nil {
+				s.logger.InfoContext(s.ctx,
+					"todos saved (add)",
+					slog.String("trace", s.tid),
+					slog.Int("count", len(todos)),
+				)
+			}
 			c.resp <- err
 
 		case updateCmd:
 			mu.Lock()
 			for i, t := range todos {
 				if t.ID == c.ID {
-					todos[i].Description = c.Description
+					if c.Description != "" {
+						todos[i].Description = c.Description
+					}
 					todos[i].Started = c.Started
 					todos[i].Done = c.Done
 					break
@@ -105,6 +120,14 @@ func (s *Store) actorLoop() {
 			}
 			err := s.save(todos)
 			mu.Unlock()
+
+			if err == nil {
+				s.logger.InfoContext(s.ctx,
+					"todos saved (update)",
+					slog.String("trace", s.tid),
+					slog.Int("count", len(todos)),
+				)
+			}
 			c.resp <- err
 
 		case deleteCmd:
@@ -118,12 +141,20 @@ func (s *Store) actorLoop() {
 			todos = keep
 			err := s.save(todos)
 			mu.Unlock()
+
+			if err == nil {
+				s.logger.InfoContext(s.ctx,
+					"todos saved (delete)",
+					slog.String("trace", s.tid),
+					slog.Int("count", len(todos)),
+				)
+			}
 			c.resp <- err
 		}
 	}
 }
 
-// save writes the current todos slice to disk.
+// save writes todos to disk.
 func (s *Store) save(todos []model.Todo) error {
 	b, err := json.MarshalIndent(todos, "", "  ")
 	if err != nil {
@@ -135,7 +166,7 @@ func (s *Store) save(todos []model.Todo) error {
 	return nil
 }
 
-// LoadTodos reads directly from disk, bypassing actor; used for GETs and tests.
+// LoadTodos reads todos from disk.
 func (s *Store) LoadTodos() ([]model.Todo, error) {
 	b, err := os.ReadFile(s.filePath)
 	if err != nil {
@@ -148,26 +179,18 @@ func (s *Store) LoadTodos() ([]model.Todo, error) {
 	return todos, nil
 }
 
-// AddTodo enqueues a new todo with internal ID generation.
 func (s *Store) AddTodo(todo model.Todo) error {
 	ch := make(chan error)
-	s.cmds <- addCmd{
-		Description: todo.Description,
-		Started:     todo.Started,
-		Done:        todo.Done,
-		resp:        ch,
-	}
+	s.cmds <- addCmd{Description: todo.Description, Started: todo.Started, Done: todo.Done, resp: ch}
 	return <-ch
 }
 
-// UpdateTodo enqueues an update for the given todo ID.
 func (s *Store) UpdateTodo(id int, description string, started, done bool) error {
 	ch := make(chan error)
 	s.cmds <- updateCmd{ID: id, Description: description, Started: started, Done: done, resp: ch}
 	return <-ch
 }
 
-// DeleteTodo enqueues a deletion of the given todo ID.
 func (s *Store) DeleteTodo(id int) error {
 	ch := make(chan error)
 	s.cmds <- deleteCmd{ID: id, resp: ch}

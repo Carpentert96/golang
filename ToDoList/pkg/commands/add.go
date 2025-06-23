@@ -11,13 +11,12 @@ import (
 // added for testing purposes (mocking overide)
 var Output io.Writer = os.Stdout
 
-// AddTodo creates a new task and returns an error if saving fails.
 func AddTodo(addTask string, todos []model.Todo, saveTodos func([]model.Todo) error) error {
 	if addTask == "" {
 		return nil
 	}
 
-	// Incriment +1
+	// Incriment as discussed week 1 +1
 	newID := 1
 	for _, t := range todos {
 		if t.ID >= newID {
@@ -28,7 +27,7 @@ func AddTodo(addTask string, todos []model.Todo, saveTodos func([]model.Todo) er
 	newTodo := model.Todo{ID: newID, Description: addTask, Done: false}
 	todos = append(todos, newTodo)
 
-	// Saving to disc
+	// First example of disc save
 	if err := saveTodos(todos); err != nil {
 		return fmt.Errorf("failed to save todos: %w", err)
 	}
